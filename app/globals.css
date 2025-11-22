@@ -1,26 +1,96 @@
-@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,opsz,wght@0,6..12,300;0,6..12,400;0,6..12,600;0,6..12,700;1,6..12,300;1,6..12,400;1,6..12,600;1,6..12,700&family=Poppins:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --color-primary: 217 91% 60%;
+    --color-primary-foreground: 0 0% 100%;
+    --color-secondary: 210 40% 96%;
+    --color-secondary-foreground: 222 47% 11%;
+    --color-tertiary: 45 93% 47%;
+    --color-tertiary-foreground: 0 0% 100%;
+    --color-accent: 45 93% 47%;
+    --color-accent-foreground: 0 0% 100%;
+    --color-accent-red: 0 84% 60%;
+    --color-accent-orange: 25 95% 53%;
+    --color-success: 142 71% 45%;
+    --color-warning: 38 92% 50%;
+    --color-error: 0 84% 60%;
+    --color-info: 217 91% 60%;
+    --color-background: 210 40% 98%;
+    --color-foreground: 222 47% 11%;
+    --color-card: 0 0% 100%;
+    --color-card-foreground: 222 47% 11%;
+    --color-popover: 0 0% 100%;
+    --color-popover-foreground: 222 47% 11%;
+    --color-muted: 210 40% 96%;
+    --color-muted-foreground: 215 16% 47%;
+    --color-border: 220 13% 91%;
+    --color-input: 220 13% 91%;
+    --color-ring: 217 91% 60%;
+    --color-destructive: 0 84% 60%;
+    --color-destructive-foreground: 0 0% 100%;
+    
+    --font-sans: "Nunito Sans", sans-serif;
+    --font-serif: "Poppins", sans-serif;
+    --font-mono: "IBM Plex Mono", monospace;
+    
+    --gradient-buddhist: linear-gradient(135deg, hsl(217, 91%, 60%) 0%, hsl(45, 93%, 47%) 25%, hsl(0, 84%, 60%) 50%, hsl(0, 0%, 100%) 75%, hsl(25, 95%, 53%) 100%);
+    --gradient-diagonal: linear-gradient(135deg, hsl(217, 91%, 60%) 0%, hsl(25, 95%, 53%) 100%);
+    --gradient-button: linear-gradient(90deg, hsl(217, 91%, 60%) 0%, hsl(45, 93%, 47%) 50%, hsl(25, 95%, 53%) 100%);
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-serif);
+    letter-spacing: -0.025em;
+  }
+
+  code, pre {
+    font-family: var(--font-mono);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer components {
+  .card {
+    @apply bg-card text-card-foreground rounded-lg border shadow-sm;
+  }
+  
+  .btn {
+    @apply inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50;
+  }
+  
+  .btn-primary {
+    @apply bg-primary text-primary-foreground hover:bg-primary/90;
+  }
+  
+  .btn-secondary {
+    @apply bg-secondary text-secondary-foreground hover:bg-secondary/80;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  
+  .animate-fade-in {
+    animation: fadeIn 0.5s ease-in-out;
+  }
+  
+  .animate-slide-up {
+    animation: slideUp 0.3s ease-out;
+  }
 }
