@@ -7,9 +7,9 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: false,
   },
-  eslint: {
-    ignoreDuringBuilds: true, // Ubah ke true untuk skip error eslint saat build
-  },
+  // eslint: {
+  //   ignoreDuringBuilds: true, // Ubah ke true untuk skip error eslint saat build
+  // },
 }
 
 export default nextConfig
