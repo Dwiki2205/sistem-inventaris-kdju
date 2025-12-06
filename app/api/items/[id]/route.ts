@@ -1,12 +1,13 @@
-import { NextResponse } from 'next/server';
-import { itemService } from 'lib/database';
+import { NextResponse, NextRequest } from 'next/server';
+import { itemService } from '@/lib/database';
 
 export async function GET(
-  request: Request,
-  { params }: { params: { id: string } }
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const item = await itemService.getItemById(params.id);
+    const { id } = await params;
+    const item = await itemService.getItemById(id);
     
     if (!item) {
       return NextResponse.json(
@@ -25,12 +26,13 @@ export async function GET(
 }
 
 export async function PUT(
-  request: Request,
-  { params }: { params: { id: string } }
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const itemData = await request.json();
-    const updatedItem = await itemService.updateItem(params.id, itemData);
+    const updatedItem = await itemService.updateItem(id, itemData);
     
     if (!updatedItem) {
       return NextResponse.json(
@@ -49,11 +51,12 @@ export async function PUT(
 }
 
 export async function DELETE(
-  request: Request,
-  { params }: { params: { id: string } }
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const success = await itemService.deleteItem(params.id);
+    const { id } = await params;
+    const success = await itemService.deleteItem(id);
     
     if (!success) {
       return NextResponse.json(

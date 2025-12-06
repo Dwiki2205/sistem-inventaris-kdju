@@ -1,6 +1,6 @@
 // app/api/borrow/route.ts
 import { NextResponse } from 'next/server';
-import { borrowService } from '@/config/database';
+import { borrowService } from '@/lib/database';
 
 export async function GET() {
   try {

@@ -1,16 +1,14 @@
-import { NextResponse } from 'next/server';
-import { borrowService } from 'config/database';
+import { NextResponse, NextRequest } from 'next/server';
+import { borrowService } from '@/lib/database'; // Perbaiki path
 
 export async function PUT(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Tunggu params diselesaikan terlebih dahulu
     const { id } = await params;
     const recordData = await request.json();
     
-    // Sekarang gunakan id yang sudah di-resolve
     const updatedRecord = await borrowService.updateBorrowRecord(id, recordData);
     
     if (!updatedRecord) {
