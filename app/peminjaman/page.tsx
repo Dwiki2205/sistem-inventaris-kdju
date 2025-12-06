@@ -1,439 +1,410 @@
-// app/peminjaman/page.tsx
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useBorrowStore } from '@/stores/borrowStore';
 import { useAuthStore } from '@/stores/authStore';
+import { useItemStore } from '@/stores/itemStore';
+import { useBorrowStore } from '@/stores/borrowStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { PlusIcon, CheckCircleIcon, XCircleIcon, Loader2, CalendarIcon } from 'lucide-react';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Card } from '@/components/ui/card';
+import { ArrowLeftIcon, Loader2 } from 'lucide-react';
 
-const BorrowListPage: React.FC = () => {
+const BorrowPage: React.FC = () => {
   const router = useRouter();
-  const { records, updateRecord, fetchRecords, loading } = useBorrowStore();
   const { user } = useAuthStore();
+  const { items, fetchItems, loading: itemsLoading } = useItemStore();
+  const { createRecord, loading: borrowLoading } = useBorrowStore();
   const { addToast } = useToastStore();
-  const [selectedRecord, setSelectedRecord] = useState<string | null>(null);
-  const [returnNotes, setReturnNotes] = useState('');
-  const [isReturnDialogOpen, setIsReturnDialogOpen] = useState(false);
-  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
-  const [cancelReason, setCancelReason] = useState('');
+
+  const [formData, setFormData] = useState({
+    borrowerName: user?.name || '',
+    itemId: '',
+    quantity: 1,
+    borrowDate: new Date().toISOString().split('T')[0],
+    returnDate: '',
+    notes: '',
+  });
+
+  const [submitting, setSubmitting] = useState(false);
+  const [availableItems, setAvailableItems] = useState(items.filter(item => item.stock > 0));
 
   useEffect(() => {
-    const loadRecords = async () => {
-      try {
-        await fetchRecords();
-      } catch (error) {
-        console.error('Error loading borrow records:', error);
-        addToast({
-          title: 'Error',
-          description: 'Gagal memuat data peminjaman',
-          variant: 'error',
-        });
-      }
-    };
-
-    loadRecords();
-  }, [fetchRecords, addToast]);
-
-  const handleReturnItem = (recordId: string) => {
-    setSelectedRecord(recordId);
-    setIsReturnDialogOpen(true);
-  };
-
-  const handleCancelItem = (recordId: string) => {
-    setSelectedRecord(recordId);
-    setIsCancelDialogOpen(true);
-  };
-
-  const confirmReturn = async () => {
-    if (selectedRecord) {
-      try {
-        await updateRecord(selectedRecord, {
-          status: 'dikembalikan',
-          actual_return_date: new Date().toISOString().split('T')[0],
-          notes: returnNotes,
-          verified_by: user?.id,
-        });
-        
-        addToast({
-          title: 'Berhasil',
-          description: 'Barang berhasil dikembalikan',
-          variant: 'success',
-        });
-        setIsReturnDialogOpen(false);
-        setReturnNotes('');
-        setSelectedRecord(null);
-      } catch (error) {
-        console.error('Error returning item:', error);
-        addToast({
-          title: 'Error',
-          description: 'Gagal mengembalikan barang',
-          variant: 'error',
-        });
-      }
-    }
-  };
-
-  const confirmCancel = async () => {
-    if (selectedRecord) {
-      try {
-        await updateRecord(selectedRecord, {
-          status: 'dibatalkan',
-          notes: cancelReason,
-        });
-        
-        addToast({
-          title: 'Berhasil',
-          description: 'Peminjaman berhasil dibatalkan',
-          variant: 'success',
-        });
-        setIsCancelDialogOpen(false);
-        setCancelReason('');
-        setSelectedRecord(null);
-      } catch (error) {
-        console.error('Error canceling borrow:', error);
-        addToast({
-          title: 'Error',
-          description: 'Gagal membatalkan peminjaman',
-          variant: 'error',
-        });
-      }
-    }
-  };
-
-  const getStatusBadge = (status: string) => {
-    const statusConfig = {
-      dipinjam: { label: 'Dipinjam', variant: 'default' as const },
-      dikembalikan: { label: 'Dikembalikan', variant: 'success' as const },
-      terlambat: { label: 'Terlambat', variant: 'destructive' as const },
-      dibatalkan: { label: 'Dibatalkan', variant: 'secondary' as const },
-    };
-
-    const config = statusConfig[status as keyof typeof statusConfig] || { label: status, variant: 'default' as const };
-    
-    return (
-      <Badge variant={config.variant} className="text-xs">
-        {config.label}
-      </Badge>
-    );
-  };
-
-  // PERBAIKAN DI SINI: Ubah tipe parameter dan handle Date object
-  const isOverdue = (returnDate: string | Date): boolean => {
-    if (!returnDate) return false;
-    
-    const today = new Date();
-    let returnDateObj: Date;
-    
-    if (returnDate instanceof Date) {
-      returnDateObj = returnDate;
+    // Load items jika belum ada
+    if (items.length === 0) {
+      fetchItems();
     } else {
-      returnDateObj = new Date(returnDate);
+      // Filter hanya item yang ada stoknya
+      setAvailableItems(items.filter(item => item.stock > 0));
     }
-    
-    // Set waktu ke akhir hari untuk perbandingan yang tepat
-    returnDateObj.setHours(23, 59, 59, 999);
-    
-    return today > returnDateObj;
+  }, [items, fetchItems]);
+
+  // Update availableItems ketika items berubah
+  useEffect(() => {
+    setAvailableItems(items.filter(item => item.stock > 0));
+  }, [items]);
+
+  // Hitung tanggal minimal untuk kembali (hari ini)
+  const getMinReturnDate = () => {
+    const today = new Date();
+    today.setDate(today.getDate() + 1); // Minimal besok
+    return today.toISOString().split('T')[0];
   };
 
-  // Helper function untuk format date dengan aman
-  const formatDate = (date: string | Date): string => {
-    if (!date) return '-';
-    
+  // Hitung tanggal maksimal untuk pinjam (hari ini)
+  const getMaxBorrowDate = () => {
+    const today = new Date();
+    return today.toISOString().split('T')[0];
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+
     try {
-      const dateObj = date instanceof Date ? date : new Date(date);
-      return dateObj.toLocaleDateString('id-ID');
-    } catch (error) {
-      console.error('Error formatting date:', error);
-      return '-';
+      // Validasi form
+      if (!formData.itemId || !formData.borrowerName || !formData.returnDate) {
+        addToast({
+          title: 'Error',
+          description: 'Harap isi semua field yang wajib (bertanda *)',
+          variant: 'error',
+        });
+        setSubmitting(false);
+        return;
+      }
+
+      const item = items.find((i) => i.id === formData.itemId);
+      if (!item) {
+        addToast({
+          title: 'Error',
+          description: 'Barang tidak ditemukan',
+          variant: 'error',
+        });
+        setSubmitting(false);
+        return;
+      }
+
+      if (formData.quantity > item.stock) {
+        addToast({
+          title: 'Error',
+          description: `Jumlah melebihi stok tersedia. Stok: ${item.stock}`,
+          variant: 'error',
+        });
+        setSubmitting(false);
+        return;
+      }
+
+      if (formData.quantity <= 0) {
+        addToast({
+          title: 'Error',
+          description: 'Jumlah harus lebih dari 0',
+          variant: 'error',
+        });
+        setSubmitting(false);
+        return;
+      }
+
+      // Validasi tanggal
+      const borrowDate = new Date(formData.borrowDate);
+      const returnDate = new Date(formData.returnDate);
+      
+      if (returnDate <= borrowDate) {
+        addToast({
+          title: 'Error',
+          description: 'Tanggal kembali harus setelah tanggal pinjam',
+          variant: 'error',
+        });
+        setSubmitting(false);
+        return;
+      }
+
+      // Pastikan user sudah login
+      if (!user?.id) {
+        addToast({
+          title: 'Error',
+          description: 'Anda harus login untuk melakukan peminjaman',
+          variant: 'error',
+        });
+        setSubmitting(false);
+        router.push('/login');
+        return;
+      }
+
+      // Data untuk dikirim ke API
+      const recordData = {
+        item_id: formData.itemId,
+        borrower_name: formData.borrowerName,
+        quantity: formData.quantity,
+        borrow_date: borrowDate.toISOString(),
+        return_date: returnDate.toISOString(),
+        notes: formData.notes,
+        status: 'dipinjam' as const,
+        created_by: user.id,
+      };
+
+      console.log('Creating borrow record:', recordData);
+
+      // Gunakan createRecord dari store yang sudah memanggil API
+      const newRecord = await createRecord(recordData);
+      
+      console.log('Borrow record created successfully:', newRecord);
+      
+      addToast({
+        title: 'Berhasil!',
+        description: 'Peminjaman berhasil dicatat',
+        variant: 'success',
+        duration: 3000,
+      });
+      
+      // Reset form setelah sukses
+      setFormData({
+        borrowerName: user?.name || '',
+        itemId: '',
+        quantity: 1,
+        borrowDate: new Date().toISOString().split('T')[0],
+        returnDate: '',
+        notes: '',
+      });
+      
+      // Refresh items untuk update stok
+      await fetchItems();
+      
+      // Redirect setelah 2 detik
+      setTimeout(() => {
+        router.push('/peminjaman');
+      }, 2000);
+      
+    } catch (error: any) {
+      console.error('Error creating borrow record:', error);
+      addToast({
+        title: 'Error',
+        description: error.message || 'Gagal mencatat peminjaman',
+        variant: 'error',
+        duration: 5000,
+      });
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  if (loading && records.length === 0) {
-    return (
-      <div className="flex items-center justify-center py-16">
-        <Loader2 className="h-8 w-8 animate-spin mr-2" />
-        <span>Memuat data peminjaman...</span>
-      </div>
-    );
-  }
+  const isLoading = itemsLoading || borrowLoading || submitting;
 
   return (
-    <div>
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-12">
-        <div>
-          <h1 className="text-3xl font-serif font-semibold mb-2 text-foreground">
-            Riwayat Peminjaman
-          </h1>
-          <p className="text-muted-foreground">
-            {records.length > 0 
-              ? `Total ${records.length} riwayat peminjaman` 
-              : 'Kelola peminjaman barang'
-            }
-          </p>
-        </div>
-        <Button
-          onClick={() => router.push('/peminjaman/tambah')}
-          className="bg-accent-orange text-primary-foreground hover:bg-accent-orange/90 font-normal"
-          disabled={loading}
-        >
-          <PlusIcon className="h-5 w-5 mr-2" strokeWidth={1.5} />
-          Tambah Peminjaman
-        </Button>
+    <div className="max-w-4xl mx-auto p-4 md:p-6">
+      <Button
+        variant="ghost"
+        onClick={() => router.back()}
+        className="mb-8 bg-transparent text-foreground hover:bg-muted"
+        disabled={isLoading}
+      >
+        <ArrowLeftIcon className="h-5 w-5 mr-2" strokeWidth={1.5} />
+        Kembali
+      </Button>
+
+      <div className="mb-12">
+        <h1 className="text-3xl font-serif font-semibold mb-2 text-foreground">
+          Form Peminjaman Barang
+        </h1>
+        <p className="text-muted-foreground">Isi form untuk meminjam barang dari inventaris</p>
       </div>
 
-      {loading && records.length > 0 && (
-        <div className="flex items-center justify-center py-4">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground mr-2" />
-          <span className="text-muted-foreground">Memperbarui data...</span>
-        </div>
-      )}
+      <Card className="p-6 md:p-8 bg-card text-card-foreground shadow-lg">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Nama Peminjam */}
+          <div className="space-y-2">
+            <Label htmlFor="borrowerName" className="text-foreground">
+              Nama Peminjam <span className="text-red-500">*</span>
+            </Label>
+            <Input
+              id="borrowerName"
+              value={formData.borrowerName}
+              onChange={(e) => setFormData({ ...formData, borrowerName: e.target.value })}
+              required
+              disabled={isLoading}
+              className="bg-background text-foreground border-border"
+              placeholder="Masukkan nama lengkap peminjam"
+            />
+            <p className="text-sm text-muted-foreground">Nama akan tercatat sebagai peminjam</p>
+          </div>
 
-      <Card className="overflow-hidden bg-card text-card-foreground">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-muted">
-              <tr>
-                <th className="px-6 py-4 text-left text-sm font-medium text-foreground">
-                  Barang
-                </th>
-                <th className="px-6 py-4 text-left text-sm font-medium text-foreground">
-                  Peminjam
-                </th>
-                <th className="px-6 py-4 text-left text-sm font-medium text-foreground">
-                  Jumlah
-                </th>
-                <th className="px-6 py-4 text-left text-sm font-medium text-foreground">
-                  Tanggal Pinjam
-                </th>
-                <th className="px-6 py-4 text-left text-sm font-medium text-foreground">
-                  Tanggal Kembali
-                </th>
-                <th className="px-6 py-4 text-left text-sm font-medium text-foreground">
-                  Status
-                </th>
-                <th className="px-6 py-4 text-left text-sm font-medium text-foreground">
-                  Catatan
-                </th>
-                {user?.role === 'admin' && (
-                  <th className="px-6 py-4 text-left text-sm font-medium text-foreground">
-                    Aksi
-                  </th>
-                )}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {records.map((record) => {
-                // PERBAIKAN DI SINI: Pastikan kita mengirim string ke isOverdue
-                const returnDateString = record.return_date 
-                  ? (record.return_date instanceof Date 
-                    ? record.return_date.toISOString() 
-                    : record.return_date)
-                  : '';
-                
-                const isRecordOverdue = record.status === 'dipinjam' && returnDateString && isOverdue(returnDateString);
-                
-                return (
-                  <tr key={record.id} className={`hover:bg-muted/50 ${isRecordOverdue ? 'bg-red-50' : ''}`}>
-                    <td className="px-6 py-4 text-sm text-foreground">
-                      <div className="font-medium">{record.item_name}</div>
-                      {isRecordOverdue && (
-                        <div className="text-xs text-red-600 flex items-center mt-1">
-                          <CalendarIcon className="h-3 w-3 mr-1" />
-                          Terlambat
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-foreground">{record.borrower_name}</td>
-                    <td className="px-6 py-4 text-sm font-mono text-foreground">
-                      {record.quantity}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-foreground">
-                      {formatDate(record.borrow_date)}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-foreground">
-                      <div className={`${isRecordOverdue ? 'text-red-600 font-medium' : ''}`}>
-                        {formatDate(record.return_date)}
+          {/* Pilih Barang */}
+          <div className="space-y-2">
+            <Label htmlFor="itemId" className="text-foreground">
+              Barang yang Dipinjam <span className="text-red-500">*</span>
+            </Label>
+            <Select
+              value={formData.itemId}
+              onValueChange={(value) => {
+                const selectedItem = items.find(item => item.id === value);
+                setFormData({ 
+                  ...formData, 
+                  itemId: value,
+                  quantity: selectedItem ? Math.min(formData.quantity, selectedItem.stock) : 1
+                });
+              }}
+              disabled={isLoading || availableItems.length === 0}
+            >
+              <SelectTrigger className="bg-background text-foreground border-border">
+                <SelectValue placeholder={availableItems.length === 0 ? "Tidak ada barang tersedia" : "Pilih barang"} />
+              </SelectTrigger>
+              <SelectContent className="bg-card text-card-foreground max-h-[300px]">
+                {availableItems.length === 0 ? (
+                  <SelectItem value="" disabled className="text-muted-foreground">
+                    Tidak ada barang yang tersedia
+                  </SelectItem>
+                ) : (
+                  availableItems.map((item) => (
+                    <SelectItem 
+                      key={item.id} 
+                      value={item.id} 
+                      className="text-foreground hover:bg-accent"
+                    >
+                      <div className="flex flex-col">
+                        <span className="font-medium">{item.name}</span>
+                        <span className="text-sm text-muted-foreground">
+                          Stok: {item.stock} | Lokasi: {item.location} | Kondisi: {item.condition}
+                        </span>
                       </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      {getStatusBadge(record.status)}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-muted-foreground max-w-xs">
-                      {record.notes ? (
-                        <div className="line-clamp-2" title={record.notes}>
-                          {record.notes}
-                        </div>
-                      ) : (
-                        <span className="italic text-gray-400">Tidak ada catatan</span>
-                      )}
-                      {record.actual_return_date && (
-                        <div className="text-xs text-green-600 mt-1">
-                          Dikembalikan: {formatDate(record.actual_return_date)}
-                        </div>
-                      )}
-                    </td>
-                    {user?.role === 'admin' && (
-                      <td className="px-6 py-4">
-                        {record.status === 'dipinjam' ? (
-                          <div className="flex flex-col gap-2">
-                            <Button
-                              size="sm"
-                              onClick={() => handleReturnItem(record.id)}
-                              className="bg-success text-primary-foreground hover:bg-success/90 font-normal"
-                            >
-                              <CheckCircleIcon className="h-4 w-4 mr-1" strokeWidth={1.5} />
-                              Kembalikan
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleCancelItem(record.id)}
-                              className="bg-transparent text-error border-error hover:bg-error hover:text-white font-normal"
-                            >
-                              <XCircleIcon className="h-4 w-4 mr-1" strokeWidth={1.5} />
-                              Batalkan
-                            </Button>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">
-                            {record.status === 'dikembalikan' && 'Selesai'}
-                            {record.status === 'dibatalkan' && 'Dibatalkan'}
-                          </span>
-                        )}
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        {records.length === 0 && !loading && (
-          <div className="text-center py-16">
-            <CalendarIcon className="h-16 w-16 text-gray-400 mx-auto mb-4" strokeWidth={1.5} />
-            <p className="text-muted-foreground mb-4">Belum ada riwayat peminjaman</p>
-            <Button
-              onClick={() => router.push('/peminjaman/tambah')}
-              className="bg-accent-orange text-primary-foreground hover:bg-accent-orange/90"
-            >
-              <PlusIcon className="h-5 w-5 mr-2" strokeWidth={1.5} />
-              Tambah Peminjaman Pertama
-            </Button>
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+            {availableItems.length === 0 && (
+              <p className="text-sm text-amber-600">
+                Semua barang sedang habis stok. Silakan tambah stok barang terlebih dahulu.
+              </p>
+            )}
           </div>
-        )}
-      </Card>
 
-      {/* Return Dialog */}
-      <Dialog open={isReturnDialogOpen} onOpenChange={setIsReturnDialogOpen}>
-        <DialogContent className="bg-card text-card-foreground">
-          <DialogHeader>
-            <DialogTitle className="text-foreground">Konfirmasi Pengembalian</DialogTitle>
-            <DialogDescription className="text-muted-foreground">
-              Apakah Anda yakin ingin menandai barang ini sebagai dikembalikan?
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
+          {/* Grid: Jumlah, Tanggal Pinjam, Tanggal Kembali */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Jumlah */}
             <div className="space-y-2">
-              <Label htmlFor="returnNotes" className="text-foreground">
-                Catatan Pengembalian (Opsional)
+              <Label htmlFor="quantity" className="text-foreground">
+                Jumlah <span className="text-red-500">*</span>
               </Label>
-              <Textarea
-                id="returnNotes"
-                value={returnNotes}
-                onChange={(e) => setReturnNotes(e.target.value)}
-                placeholder="Tambahkan catatan kondisi barang saat dikembalikan..."
-                rows={4}
-                className="bg-background text-foreground border-border"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setIsReturnDialogOpen(false);
-                setReturnNotes('');
-                setSelectedRecord(null);
-              }}
-              className="bg-transparent text-foreground border-border hover:bg-muted"
-            >
-              Batal
-            </Button>
-            <Button
-              onClick={confirmReturn}
-              className="bg-success text-primary-foreground hover:bg-success/90 font-normal"
-            >
-              Konfirmasi Pengembalian
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Cancel Dialog */}
-      <Dialog open={isCancelDialogOpen} onOpenChange={setIsCancelDialogOpen}>
-        <DialogContent className="bg-card text-card-foreground">
-          <DialogHeader>
-            <DialogTitle className="text-foreground">Konfirmasi Pembatalan</DialogTitle>
-            <DialogDescription className="text-muted-foreground">
-              Apakah Anda yakin ingin membatalkan peminjaman ini?
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="cancelReason" className="text-foreground">
-                Alasan Pembatalan
-              </Label>
-              <Textarea
-                id="cancelReason"
-                value={cancelReason}
-                onChange={(e) => setCancelReason(e.target.value)}
-                placeholder="Masukkan alasan pembatalan..."
-                rows={4}
-                className="bg-background text-foreground border-border"
+              <Input
+                id="quantity"
+                type="number"
+                min="1"
+                max={items.find(i => i.id === formData.itemId)?.stock || 1}
+                value={formData.quantity}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value) || 1;
+                  const maxStock = items.find(i => i.id === formData.itemId)?.stock || 1;
+                  setFormData({ ...formData, quantity: Math.min(value, maxStock) });
+                }}
                 required
+                disabled={isLoading || !formData.itemId}
+                className="bg-background text-foreground border-border"
               />
+              {formData.itemId && (
+                <p className="text-sm text-muted-foreground">
+                  Stok tersedia: {items.find(i => i.id === formData.itemId)?.stock || 0}
+                </p>
+              )}
+            </div>
+
+            {/* Tanggal Pinjam */}
+            <div className="space-y-2">
+              <Label htmlFor="borrowDate" className="text-foreground">
+                Tanggal Pinjam <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="borrowDate"
+                type="date"
+                value={formData.borrowDate}
+                onChange={(e) => setFormData({ ...formData, borrowDate: e.target.value })}
+                max={getMaxBorrowDate()}
+                required
+                disabled={isLoading}
+                className="bg-background text-foreground border-border"
+              />
+              <p className="text-sm text-muted-foreground">Maksimal hari ini</p>
+            </div>
+
+            {/* Tanggal Kembali */}
+            <div className="space-y-2">
+              <Label htmlFor="returnDate" className="text-foreground">
+                Tanggal Kembali <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="returnDate"
+                type="date"
+                value={formData.returnDate}
+                onChange={(e) => setFormData({ ...formData, returnDate: e.target.value })}
+                min={getMinReturnDate()}
+                required
+                disabled={isLoading}
+                className="bg-background text-foreground border-border"
+              />
+              <p className="text-sm text-muted-foreground">Minimal besok</p>
             </div>
           </div>
-          <DialogFooter>
+
+          {/* Catatan */}
+          <div className="space-y-2">
+            <Label htmlFor="notes" className="text-foreground">Catatan (Opsional)</Label>
+            <Textarea
+              id="notes"
+              value={formData.notes}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              rows={3}
+              disabled={isLoading}
+              className="bg-background text-foreground border-border resize-none"
+              placeholder="Tambahkan catatan mengenai peminjaman (tujuan, kondisi khusus, dll.)"
+            />
+            <p className="text-sm text-muted-foreground">
+              Catatan akan membantu dalam pelacakan dan pengembalian barang
+            </p>
+          </div>
+
+          {/* Tombol Aksi */}
+          <div className="flex flex-col sm:flex-row gap-4 pt-6 border-t border-border">
             <Button
+              type="submit"
+              disabled={isLoading || availableItems.length === 0 || !formData.itemId}
+              className="bg-primary text-primary-foreground hover:bg-primary/90 font-medium px-8 py-6 text-base sm:w-auto w-full"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="h-5 w-5 mr-3 animate-spin" />
+                  Menyimpan Peminjaman...
+                </>
+              ) : (
+                'Simpan Peminjaman'
+              )}
+            </Button>
+            <Button
+              type="button"
               variant="outline"
-              onClick={() => {
-                setIsCancelDialogOpen(false);
-                setCancelReason('');
-                setSelectedRecord(null);
-              }}
-              className="bg-transparent text-foreground border-border hover:bg-muted"
+              onClick={() => router.back()}
+              disabled={isLoading}
+              className="bg-transparent text-foreground border-border hover:bg-muted font-medium px-8 py-6 text-base sm:w-auto w-full"
             >
               Batal
             </Button>
-            <Button
-              onClick={confirmCancel}
-              className="bg-error text-primary-foreground hover:bg-error/90 font-normal"
-            >
-              Konfirmasi Pembatalan
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+
+          {/* Informasi */}
+          <div className="mt-6 p-4 bg-muted/50 rounded-lg border border-border">
+            <h3 className="font-medium text-foreground mb-2">Informasi Penting:</h3>
+            <ul className="text-sm text-muted-foreground space-y-1">
+              <li>• Pastikan semua data yang diisi sudah benar</li>
+              <li>• Stok barang akan otomatis berkurang setelah peminjaman</li>
+              <li>• Tanggal pengembalian harus sesuai kesepakatan</li>
+              <li>• Status peminjaman dapat diubah nanti jika diperlukan</li>
+            </ul>
+          </div>
+        </form>
+      </Card>
     </div>
   );
 };
 
-export default BorrowListPage;
+export default BorrowPage;

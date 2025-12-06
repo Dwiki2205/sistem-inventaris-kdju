@@ -8,8 +8,8 @@ export interface Item {
   condition: 'baik' | 'rusak' | 'perlu_perbaikan';
   description: string;
   image_data?: string;
-  created_at: Date | string;  // Perbaiki tipe ini
-  updated_at: Date | string;  // Perbaiki tipe ini
+  created_at: string;
+  updated_at: string;
 }
 
 export interface BorrowRecord {
@@ -18,15 +18,15 @@ export interface BorrowRecord {
   item_name: string;
   borrower_name: string;
   quantity: number;
-  borrow_date: Date | string;  // Perbaiki tipe ini
-  return_date: Date | string;  // Perbaiki tipe ini
-  actual_return_date?: Date | string;  // Perbaiki tipe ini
+  borrow_date: string;
+  return_date: string;
+  actual_return_date?: string;
   notes?: string;
   status: 'dipinjam' | 'dikembalikan' | 'terlambat' | 'dibatalkan';
   created_by?: string;
   verified_by?: string;
-  created_at: Date | string;  // Perbaiki tipe ini
-  updated_at: Date | string;  // Perbaiki tipe ini
+  created_at: string;
+  updated_at: string;
 }
 
 export interface User {
@@ -34,8 +34,8 @@ export interface User {
   email: string;
   name: string;
   role: 'admin' | 'staff';
-  created_at: Date | string;  // Perbaiki tipe ini
-  updated_at: Date | string;  // Perbaiki tipe ini
+  created_at: string;
+  updated_at: string;
 }
 
 export interface DashboardStats {
@@ -45,4 +45,13 @@ export interface DashboardStats {
   totalUsers: number;
 }
 
-// Atau jika Anda ingin tetap menggunakan string, ubah transform function
+export interface CreateBorrowRecordInput {
+  item_id: string;
+  borrower_name: string;
+  quantity: number;
+  borrow_date: string;
+  return_date: string;
+  notes?: string;
+  status?: 'dipinjam' | 'dikembalikan' | 'terlambat' | 'dibatalkan';
+  created_by: string;
+}

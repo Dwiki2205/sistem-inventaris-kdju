@@ -1,12 +1,43 @@
 // lib/database.ts
 import { sql } from './db';
-import { Item, BorrowRecord, User, DashboardStats } from '../types';
+import { Item, BorrowRecord, User, DashboardStats, CreateBorrowRecordInput } from '../types';
 
-// Helper untuk mengkonversi Date ke string ISO
+// Helper untuk mengkonversi Date ke string format YYYY-MM-DD untuk PostgreSQL DATE
 const formatDateForDB = (date: Date | string | null | undefined): string | null => {
   if (!date) return null;
-  if (date instanceof Date) return date.toISOString();
-  return date;
+  
+  try {
+    const dateObj = typeof date === 'string' ? new Date(date) : date;
+    
+    // Validasi jika date valid
+    if (isNaN(dateObj.getTime())) {
+      console.error('Invalid date:', date);
+      return null;
+    }
+    
+    // Konversi ke format YYYY-MM-DD untuk kolom DATE di PostgreSQL
+    const year = dateObj.getFullYear();
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    
+    return `${year}-${month}-${day}`;
+  } catch (error) {
+    console.error('Error formatting date:', error, 'Input date:', date);
+    return null;
+  }
+};
+
+// Helper untuk mengkonversi dari database ke ISO string
+const formatDateFromDB = (date: string | Date | null): string => {
+  if (!date) return new Date().toISOString();
+  
+  try {
+    const dateObj = typeof date === 'string' ? new Date(date) : date;
+    return dateObj.toISOString();
+  } catch (error) {
+    console.error('Error converting date from DB:', error);
+    return new Date().toISOString();
+  }
 };
 
 // Helper functions untuk transform data
@@ -19,8 +50,8 @@ const transformItemRow = (row: any): Item => ({
   condition: row.condition,
   description: row.description,
   image_data: row.image_data,
-  created_at: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
-  updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : new Date().toISOString()
+  created_at: formatDateFromDB(row.created_at),
+  updated_at: formatDateFromDB(row.updated_at)
 });
 
 const transformBorrowRow = (row: any): BorrowRecord => ({
@@ -29,15 +60,15 @@ const transformBorrowRow = (row: any): BorrowRecord => ({
   item_name: row.item_name,
   borrower_name: row.borrower_name,
   quantity: row.quantity,
-  borrow_date: row.borrow_date ? new Date(row.borrow_date).toISOString() : '',
-  return_date: row.return_date ? new Date(row.return_date).toISOString() : '',
-  actual_return_date: row.actual_return_date ? new Date(row.actual_return_date).toISOString() : undefined,
+  borrow_date: formatDateFromDB(row.borrow_date),
+  return_date: formatDateFromDB(row.return_date),
+  actual_return_date: row.actual_return_date ? formatDateFromDB(row.actual_return_date) : undefined,
   status: row.status,
   notes: row.notes,
   created_by: row.created_by,
   verified_by: row.verified_by,
-  created_at: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
-  updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : new Date().toISOString()
+  created_at: formatDateFromDB(row.created_at),
+  updated_at: formatDateFromDB(row.updated_at)
 });
 
 const transformUserRow = (row: any): User => ({
@@ -45,8 +76,8 @@ const transformUserRow = (row: any): User => ({
   email: row.email,
   name: row.name,
   role: row.role,
-  created_at: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
-  updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : new Date().toISOString()
+  created_at: formatDateFromDB(row.created_at),
+  updated_at: formatDateFromDB(row.updated_at)
 });
 
 // Item Services
@@ -227,6 +258,21 @@ export const itemService = {
       console.error('Error getting items by category:', error);
       throw new Error('Failed to fetch items by category');
     }
+  },
+
+  async updateItemStock(itemId: string, newStock: number): Promise<boolean> {
+    try {
+      const result = await sql`
+        UPDATE items 
+        SET stock = ${newStock}, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ${itemId}
+        RETURNING id
+      `;
+      return result.rows.length > 0;
+    } catch (error) {
+      console.error('Error updating item stock:', error);
+      throw new Error('Failed to update item stock');
+    }
   }
 };
 
@@ -277,7 +323,7 @@ export const userService = {
   }
 };
 
-// Borrow Services - PERBAIKI BAGIAN INI
+// Borrow Services - FIXED VERSION
 export const borrowService = {
   async getAllBorrowRecords(): Promise<BorrowRecord[]> {
     try {
@@ -294,43 +340,107 @@ export const borrowService = {
     }
   },
 
-  async createBorrowRecord(record: Omit<BorrowRecord, 'id' | 'created_at' | 'updated_at' | 'item_name'>): Promise<BorrowRecord | null> {
+  async createBorrowRecord(record: CreateBorrowRecordInput): Promise<BorrowRecord | null> {
     try {
-      // Dapatkan nama item
-      const itemResult = await sql`SELECT name FROM items WHERE id = ${record.item_id}`;
-      const itemName = itemResult.rows[0]?.name || 'Unknown Item';
-
-      // Format dates untuk database - PERBAIKAN DI SINI
-      const borrowDate = formatDateForDB(record.borrow_date) || new Date().toISOString();
-      const returnDate = formatDateForDB(record.return_date);
-      const actualReturnDate = formatDateForDB(record.actual_return_date);
-
-      const result = await sql`
-        INSERT INTO borrow_records (
-          item_id, item_name, borrower_name, quantity, borrow_date, 
-          return_date, status, notes, created_by
-        )
-        VALUES (
-          ${record.item_id}, 
-          ${itemName}, 
-          ${record.borrower_name}, 
-          ${record.quantity}, 
-          ${borrowDate},  // Sekarang sudah string
-          ${returnDate},  // Sekarang sudah string
-          ${record.status}, 
-          ${record.notes}, 
-          ${record.created_by}
-        )
-        RETURNING id
-      `;
-    
-      if (result.rows[0]) {
-        return this.getBorrowRecordById(result.rows[0].id);
+      console.log('Creating borrow record with data:', record);
+      
+      // Validasi data input
+      if (!record.item_id || !record.borrower_name || !record.borrow_date || !record.return_date) {
+        throw new Error('Missing required fields');
       }
-      return null;
+
+      if (record.quantity <= 0) {
+        throw new Error('Quantity must be greater than 0');
+      }
+
+      // Dapatkan item dan validasi stok
+      const itemResult = await sql`
+        SELECT id, name, stock 
+        FROM items 
+        WHERE id = ${record.item_id}
+        FOR UPDATE
+      `;
+      
+      if (itemResult.rows.length === 0) {
+        throw new Error('Item not found');
+      }
+      
+      const itemName = itemResult.rows[0].name;
+      const currentStock = itemResult.rows[0].stock;
+      
+      // Validasi stok
+      if (currentStock < record.quantity) {
+        throw new Error(`Insufficient stock. Available: ${currentStock}, Requested: ${record.quantity}`);
+      }
+      
+      // Format dates untuk database
+      const borrowDate = formatDateForDB(record.borrow_date);
+      const returnDate = formatDateForDB(record.return_date);
+      
+      if (!borrowDate || !returnDate) {
+        throw new Error('Invalid date format');
+      }
+      
+      console.log('Formatted dates - borrow:', borrowDate, 'return:', returnDate);
+      
+      // Mulai transaction
+      await sql`BEGIN`;
+      
+      try {
+        // Kurangi stok item
+        const newStock = currentStock - record.quantity;
+        await sql`
+          UPDATE items 
+          SET stock = ${newStock}, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ${record.item_id}
+        `;
+        
+        // Buat record peminjaman
+        const result = await sql`
+          INSERT INTO borrow_records (
+            item_id, 
+            item_name, 
+            borrower_name, 
+            quantity, 
+            borrow_date, 
+            return_date, 
+            status, 
+            notes, 
+            created_by
+          )
+          VALUES (
+            ${record.item_id}, 
+            ${itemName}, 
+            ${record.borrower_name}, 
+            ${record.quantity}, 
+            ${borrowDate}, 
+            ${returnDate}, 
+            ${record.status || 'dipinjam'}, 
+            ${record.notes || ''}, 
+            ${record.created_by}
+          )
+          RETURNING id, item_id, item_name, borrower_name, quantity, 
+                    borrow_date, return_date, status, notes, created_by,
+                    created_at, updated_at
+        `;
+        
+        await sql`COMMIT`;
+        
+        if (!result.rows[0]) {
+          throw new Error('Failed to create borrow record');
+        }
+        
+        const newRecord = transformBorrowRow(result.rows[0]);
+        console.log('Successfully created borrow record:', newRecord);
+        
+        return newRecord;
+      } catch (error) {
+        await sql`ROLLBACK`;
+        throw error;
+      }
     } catch (error) {
       console.error('Error creating borrow record:', error);
-      throw new Error('Failed to create borrow record');
+      throw new Error(error instanceof Error ? error.message : 'Failed to create borrow record');
     }
   },
 
@@ -353,10 +463,26 @@ export const borrowService = {
 
   async updateBorrowRecord(id: string, record: Partial<Omit<BorrowRecord, 'id' | 'created_at' | 'updated_at' | 'item_name'>>): Promise<BorrowRecord | null> {
     try {
-      // Format dates untuk database - PERBAIKAN DI SINI
+      console.log('Updating borrow record:', id, record);
+      
+      // Format dates untuk database
       const actualReturnDate = record.actual_return_date 
         ? formatDateForDB(record.actual_return_date) 
         : undefined;
+
+      // Jika status dikembalikan, update stok item
+      if (record.status === 'dikembalikan' && record.actual_return_date) {
+        // Dapatkan record untuk mengetahui item_id dan quantity
+        const currentRecord = await this.getBorrowRecordById(id);
+        if (currentRecord) {
+          // Update stok item (tambah kembali)
+          const item = await itemService.getItemById(currentRecord.item_id);
+          if (item) {
+            const newStock = item.stock + currentRecord.quantity;
+            await itemService.updateItemStock(currentRecord.item_id, newStock);
+          }
+        }
+      }
 
       const result = await sql`
         UPDATE borrow_records
@@ -391,6 +517,36 @@ export const borrowService = {
     } catch (error) {
       console.error('Error getting borrow records by status:', error);
       throw new Error('Failed to fetch borrow records');
+    }
+  },
+
+  async getBorrowRecordsByItemId(itemId: string): Promise<BorrowRecord[]> {
+    try {
+      const result = await sql`
+        SELECT br.*, i.name as item_name
+        FROM borrow_records br
+        LEFT JOIN items i ON br.item_id = i.id
+        WHERE br.item_id = ${itemId}
+        ORDER BY br.created_at DESC
+      `;
+      return result.rows.map(transformBorrowRow);
+    } catch (error) {
+      console.error('Error getting borrow records by item id:', error);
+      throw new Error('Failed to fetch borrow records');
+    }
+  },
+
+  async deleteBorrowRecord(id: string): Promise<boolean> {
+    try {
+      const result = await sql`
+        DELETE FROM borrow_records
+        WHERE id = ${id}
+        RETURNING id
+      `;
+      return result.rows.length > 0;
+    } catch (error) {
+      console.error('Error deleting borrow record:', error);
+      throw new Error('Failed to delete borrow record');
     }
   }
 };

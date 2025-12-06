@@ -1,6 +1,6 @@
 // app/stores/borrowStore.ts
 import { create } from 'zustand';
-import { BorrowRecord } from '../types';
+import { BorrowRecord, CreateBorrowRecordInput } from '../types';
 
 interface BorrowState {
   records: BorrowRecord[];
@@ -12,9 +12,11 @@ interface BorrowState {
   deleteRecord: (id: string) => void;
   fetchRecords: () => Promise<void>;
   fetchRecordById: (id: string) => Promise<BorrowRecord | null>;
-  createRecord: (record: Omit<BorrowRecord, 'id' | 'created_at' | 'updated_at' | 'item_name'>) => Promise<BorrowRecord>;
+  createRecord: (record: CreateBorrowRecordInput) => Promise<BorrowRecord>;
   fetchRecordsByItemId: (itemId: string) => Promise<BorrowRecord[]>;
+  fetchRecordsByStatus: (status: string) => Promise<BorrowRecord[]>;
   clearError: () => void;
+  clearRecords: () => void;
 }
 
 export const useBorrowStore = create<BorrowState>((set, get) => ({
@@ -24,12 +26,14 @@ export const useBorrowStore = create<BorrowState>((set, get) => ({
   
   setRecords: (records) => set({ records }),
   
-  addRecord: (record) => set((state) => ({ records: [...state.records, record] })),
+  addRecord: (record) => set((state) => ({ 
+    records: [...state.records, record] 
+  })),
   
   updateRecord: (id, updatedRecord) =>
     set((state) => ({
       records: state.records.map((record) =>
-        record.id === id ? { ...record, ...updatedRecord } : record
+        record.id === id ? { ...record, ...updatedRecord, updated_at: new Date().toISOString() } : record
       ),
     })),
 
@@ -44,9 +48,12 @@ export const useBorrowStore = create<BorrowState>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const response = await fetch('/api/borrow');
+      
       if (!response.ok) {
-        throw new Error('Failed to fetch borrow records');
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to fetch borrow records: ${response.statusText}`);
       }
+      
       const records = await response.json();
       set({ records, loading: false });
     } catch (error) {
@@ -60,12 +67,23 @@ export const useBorrowStore = create<BorrowState>((set, get) => ({
   },
 
   fetchRecordById: async (id: string) => {
+    if (!id) {
+      set({ error: 'ID is required' });
+      return null;
+    }
+    
     set({ loading: true, error: null });
     try {
       const response = await fetch(`/api/borrow/${id}`);
+      
       if (!response.ok) {
-        throw new Error('Failed to fetch borrow record');
+        if (response.status === 404) {
+          throw new Error('Borrow record not found');
+        }
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to fetch borrow record: ${response.statusText}`);
       }
+      
       const record = await response.json();
       set({ loading: false });
       return record;
@@ -79,7 +97,7 @@ export const useBorrowStore = create<BorrowState>((set, get) => ({
     }
   },
 
-  createRecord: async (recordData) => {
+  createRecord: async (recordData: CreateBorrowRecordInput) => {
     set({ loading: true, error: null });
     try {
       const response = await fetch('/api/borrow', {
@@ -92,15 +110,17 @@ export const useBorrowStore = create<BorrowState>((set, get) => ({
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create borrow record');
+        throw new Error(errorData.error || `Failed to create borrow record: ${response.statusText}`);
       }
 
       const newRecord = await response.json();
       
+      // Tambahkan record ke state
       set((state) => ({ 
-        records: [...state.records, newRecord],
+        records: [newRecord, ...state.records],
         loading: false 
       }));
+      
       return newRecord;
     } catch (error) {
       console.error('Error creating borrow record:', error);
@@ -113,9 +133,17 @@ export const useBorrowStore = create<BorrowState>((set, get) => ({
   },
 
   fetchRecordsByItemId: async (itemId: string) => {
+    if (!itemId) {
+      set({ error: 'Item ID is required' });
+      return [];
+    }
+    
     set({ loading: true, error: null });
     try {
-      const allRecords = await get().fetchRecords();
+      // Pertama, fetch semua records
+      await get().fetchRecords();
+      
+      // Filter berdasarkan item_id
       const filteredRecords = get().records.filter(record => record.item_id === itemId);
       set({ loading: false });
       return filteredRecords;
@@ -129,5 +157,32 @@ export const useBorrowStore = create<BorrowState>((set, get) => ({
     }
   },
 
+  fetchRecordsByStatus: async (status: string) => {
+    if (!status) {
+      set({ error: 'Status is required' });
+      return [];
+    }
+    
+    set({ loading: true, error: null });
+    try {
+      // Pertama, fetch semua records
+      await get().fetchRecords();
+      
+      // Filter berdasarkan status
+      const filteredRecords = get().records.filter(record => record.status === status);
+      set({ loading: false });
+      return filteredRecords;
+    } catch (error) {
+      console.error('Error fetching borrow records by status:', error);
+      set({
+        error: error instanceof Error ? error.message : 'Failed to fetch borrow records',
+        loading: false
+      });
+      return [];
+    }
+  },
+
   clearError: () => set({ error: null }),
+  
+  clearRecords: () => set({ records: [] }),
 }));

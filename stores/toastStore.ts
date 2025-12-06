@@ -5,6 +5,8 @@ interface Toast {
   title: string;
   description?: string;
   variant?: 'default' | 'success' | 'error' | 'warning'| 'info';
+  duration?: number; // Tambahkan properti duration
+
 }
 
 interface ToastState {
