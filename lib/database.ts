@@ -1,5 +1,13 @@
+// lib/database.ts
 import { sql } from './db';
-import { Item, BorrowRecord, User, DashboardStats } from 'types';
+import { Item, BorrowRecord, User, DashboardStats } from '../types';
+
+// Helper untuk mengkonversi Date ke string ISO
+const formatDateForDB = (date: Date | string | null | undefined): string | null => {
+  if (!date) return null;
+  if (date instanceof Date) return date.toISOString();
+  return date;
+};
 
 // Helper functions untuk transform data
 const transformItemRow = (row: any): Item => ({
@@ -11,8 +19,8 @@ const transformItemRow = (row: any): Item => ({
   condition: row.condition,
   description: row.description,
   image_data: row.image_data,
-  created_at: row.created_at,
-  updated_at: row.updated_at
+  created_at: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
+  updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : new Date().toISOString()
 });
 
 const transformBorrowRow = (row: any): BorrowRecord => ({
@@ -21,15 +29,15 @@ const transformBorrowRow = (row: any): BorrowRecord => ({
   item_name: row.item_name,
   borrower_name: row.borrower_name,
   quantity: row.quantity,
-  borrow_date: row.borrow_date,
-  return_date: row.return_date,
-  actual_return_date: row.actual_return_date,
+  borrow_date: row.borrow_date ? new Date(row.borrow_date).toISOString() : '',
+  return_date: row.return_date ? new Date(row.return_date).toISOString() : '',
+  actual_return_date: row.actual_return_date ? new Date(row.actual_return_date).toISOString() : undefined,
   status: row.status,
   notes: row.notes,
   created_by: row.created_by,
   verified_by: row.verified_by,
-  created_at: row.created_at,
-  updated_at: row.updated_at
+  created_at: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
+  updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : new Date().toISOString()
 });
 
 const transformUserRow = (row: any): User => ({
@@ -37,8 +45,8 @@ const transformUserRow = (row: any): User => ({
   email: row.email,
   name: row.name,
   role: row.role,
-  created_at: row.created_at,
-  updated_at: row.updated_at
+  created_at: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
+  updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : new Date().toISOString()
 });
 
 // Item Services
@@ -53,23 +61,32 @@ export const itemService = {
       return result.rows.map(transformItemRow);
     } catch (error) {
       console.error('Error getting all items:', error);
-      throw error;
+      throw new Error('Failed to fetch items');
     }
   },
 
   async getItemById(id: string): Promise<Item | null> {
     try {
+      console.log('Fetching item with ID:', id);
+      
       const result = await sql`
         SELECT id, name, category, stock, location, condition, description, image_data, created_at, updated_at
         FROM items
         WHERE id = ${id}
+        LIMIT 1
       `;
     
-      if (result.rows.length === 0) return null;
-      return transformItemRow(result.rows[0]);
+      if (result.rows.length === 0) {
+        console.log('Item not found for ID:', id);
+        return null;
+      }
+      
+      const item = transformItemRow(result.rows[0]);
+      console.log('Found item:', item);
+      return item;
     } catch (error) {
       console.error('Error getting item by id:', error);
-      throw error;
+      throw new Error('Failed to fetch item');
     }
   },
 
@@ -83,32 +100,85 @@ export const itemService = {
       return result.rows[0] ? transformItemRow(result.rows[0]) : null;
     } catch (error) {
       console.error('Error creating item:', error);
-      throw error;
+      throw new Error('Failed to create item');
     }
   },
 
   async updateItem(id: string, item: Partial<Omit<Item, 'id' | 'created_at' | 'updated_at'>>): Promise<Item | null> {
     try {
-      const result = await sql`
-        UPDATE items
-        SET
-          name = COALESCE(${item.name}, name),
-          category = COALESCE(${item.category}, category),
-          stock = COALESCE(${item.stock}, stock),
-          location = COALESCE(${item.location}, location),
-          condition = COALESCE(${item.condition}, condition),
-          description = COALESCE(${item.description}, description),
-          image_data = COALESCE(${item.image_data}, image_data),
-          updated_at = CURRENT_TIMESTAMP
-        WHERE id = ${id}
+      console.log('Updating item with ID:', id);
+      console.log('Update data:', item);
+
+      // Build dynamic update query
+      const updates: string[] = [];
+      const values: any[] = [];
+
+      if (item.name !== undefined) {
+        updates.push(`name = $${updates.length + 1}`);
+        values.push(item.name);
+      }
+      if (item.category !== undefined) {
+        updates.push(`category = $${updates.length + 1}`);
+        values.push(item.category);
+      }
+      if (item.stock !== undefined) {
+        updates.push(`stock = $${updates.length + 1}`);
+        values.push(item.stock);
+      }
+      if (item.location !== undefined) {
+        updates.push(`location = $${updates.length + 1}`);
+        values.push(item.location);
+      }
+      if (item.condition !== undefined) {
+        updates.push(`condition = $${updates.length + 1}`);
+        values.push(item.condition);
+      }
+      if (item.description !== undefined) {
+        updates.push(`description = $${updates.length + 1}`);
+        values.push(item.description);
+      }
+      if (item.image_data !== undefined) {
+        updates.push(`image_data = $${updates.length + 1}`);
+        values.push(item.image_data);
+      }
+
+      // Jika tidak ada data yang diupdate
+      if (updates.length === 0) {
+        console.log('No fields to update');
+        return this.getItemById(id);
+      }
+
+      // Tambahkan updated_at
+      updates.push(`updated_at = CURRENT_TIMESTAMP`);
+      
+      // Tambahkan ID untuk WHERE clause
+      values.push(id);
+
+      // Build query string untuk sql.query
+      const query = `
+        UPDATE items 
+        SET ${updates.join(', ')}
+        WHERE id = $${values.length}
         RETURNING id, name, category, stock, location, condition, description, image_data, created_at, updated_at
       `;
-    
-      if (result.rows.length === 0) return null;
-      return result.rows[0] ? transformItemRow(result.rows[0]) : null;
+
+      console.log('Update query:', query);
+      console.log('Update values:', values);
+
+      // Gunakan sql.query bukan sql tagged template
+      const result = await sql.query(query, values);
+      
+      if (result.rows.length === 0) {
+        console.log('No rows updated, item might not exist');
+        return null;
+      }
+      
+      const updatedItem = transformItemRow(result.rows[0]);
+      console.log('Successfully updated item:', updatedItem);
+      return updatedItem;
     } catch (error) {
       console.error('Error updating item:', error);
-      throw error;
+      throw new Error('Failed to update item: ' + (error as Error).message);
     }
   },
 
@@ -122,7 +192,40 @@ export const itemService = {
       return result.rows.length > 0;
     } catch (error) {
       console.error('Error deleting item:', error);
-      throw error;
+      throw new Error('Failed to delete item');
+    }
+  },
+
+  async searchItems(query: string): Promise<Item[]> {
+    try {
+      const result = await sql`
+        SELECT id, name, category, stock, location, condition, description, image_data, created_at, updated_at
+        FROM items
+        WHERE name ILIKE ${`%${query}%`} 
+           OR category ILIKE ${`%${query}%`}
+           OR location ILIKE ${`%${query}%`}
+           OR description ILIKE ${`%${query}%`}
+        ORDER BY created_at DESC
+      `;
+      return result.rows.map(transformItemRow);
+    } catch (error) {
+      console.error('Error searching items:', error);
+      throw new Error('Failed to search items');
+    }
+  },
+
+  async getItemsByCategory(category: string): Promise<Item[]> {
+    try {
+      const result = await sql`
+        SELECT id, name, category, stock, location, condition, description, image_data, created_at, updated_at
+        FROM items
+        WHERE category = ${category}
+        ORDER BY name
+      `;
+      return result.rows.map(transformItemRow);
+    } catch (error) {
+      console.error('Error getting items by category:', error);
+      throw new Error('Failed to fetch items by category');
     }
   }
 };
@@ -139,7 +242,7 @@ export const userService = {
       return result.rows.map(transformUserRow);
     } catch (error) {
       console.error('Error getting all users:', error);
-      throw error;
+      throw new Error('Failed to fetch users');
     }
   },
 
@@ -155,12 +258,26 @@ export const userService = {
       return transformUserRow(result.rows[0]);
     } catch (error) {
       console.error('Error getting user by email:', error);
-      throw error;
+      throw new Error('Failed to fetch user');
+    }
+  },
+
+  async createUser(user: Omit<User, 'id' | 'created_at' | 'updated_at'>): Promise<User | null> {
+    try {
+      const result = await sql`
+        INSERT INTO users (email, name, role)
+        VALUES (${user.email}, ${user.name}, ${user.role})
+        RETURNING id, email, name, role, created_at, updated_at
+      `;
+      return result.rows[0] ? transformUserRow(result.rows[0]) : null;
+    } catch (error) {
+      console.error('Error creating user:', error);
+      throw new Error('Failed to create user');
     }
   }
 };
 
-// Borrow Services
+// Borrow Services - PERBAIKI BAGIAN INI
 export const borrowService = {
   async getAllBorrowRecords(): Promise<BorrowRecord[]> {
     try {
@@ -173,27 +290,36 @@ export const borrowService = {
       return result.rows.map(transformBorrowRow);
     } catch (error) {
       console.error('Error getting all borrow records:', error);
-      throw error;
+      throw new Error('Failed to fetch borrow records');
     }
   },
 
-  async createBorrowRecord(record: Omit<BorrowRecord, 'id' | 'created_at' | 'updated_at' | 'item_name'> & { item_name?: string }): Promise<BorrowRecord | null> {
+  async createBorrowRecord(record: Omit<BorrowRecord, 'id' | 'created_at' | 'updated_at' | 'item_name'>): Promise<BorrowRecord | null> {
     try {
-      let itemName = record.item_name;
-      if (!itemName) {
-        const itemResult = await sql`SELECT name FROM items WHERE id = ${record.item_id}`;
-        if (itemResult.rows.length > 0) {
-          itemName = itemResult.rows[0].name;
-        }
-      }
+      // Dapatkan nama item
+      const itemResult = await sql`SELECT name FROM items WHERE id = ${record.item_id}`;
+      const itemName = itemResult.rows[0]?.name || 'Unknown Item';
+
+      // Format dates untuk database - PERBAIKAN DI SINI
+      const borrowDate = formatDateForDB(record.borrow_date) || new Date().toISOString();
+      const returnDate = formatDateForDB(record.return_date);
+      const actualReturnDate = formatDateForDB(record.actual_return_date);
 
       const result = await sql`
         INSERT INTO borrow_records (
-          item_id, item_name, borrower_name, quantity, borrow_date, return_date, status, notes, created_by
+          item_id, item_name, borrower_name, quantity, borrow_date, 
+          return_date, status, notes, created_by
         )
         VALUES (
-          ${record.item_id}, ${itemName}, ${record.borrower_name}, ${record.quantity}, 
-          ${record.borrow_date}, ${record.return_date}, ${record.status}, ${record.notes}, ${record.created_by}
+          ${record.item_id}, 
+          ${itemName}, 
+          ${record.borrower_name}, 
+          ${record.quantity}, 
+          ${borrowDate},  // Sekarang sudah string
+          ${returnDate},  // Sekarang sudah string
+          ${record.status}, 
+          ${record.notes}, 
+          ${record.created_by}
         )
         RETURNING id
       `;
@@ -204,7 +330,7 @@ export const borrowService = {
       return null;
     } catch (error) {
       console.error('Error creating borrow record:', error);
-      throw error;
+      throw new Error('Failed to create borrow record');
     }
   },
 
@@ -221,17 +347,22 @@ export const borrowService = {
       return transformBorrowRow(result.rows[0]);
     } catch (error) {
       console.error('Error getting borrow record by id:', error);
-      throw error;
+      throw new Error('Failed to fetch borrow record');
     }
   },
 
   async updateBorrowRecord(id: string, record: Partial<Omit<BorrowRecord, 'id' | 'created_at' | 'updated_at' | 'item_name'>>): Promise<BorrowRecord | null> {
     try {
+      // Format dates untuk database - PERBAIKAN DI SINI
+      const actualReturnDate = record.actual_return_date 
+        ? formatDateForDB(record.actual_return_date) 
+        : undefined;
+
       const result = await sql`
         UPDATE borrow_records
         SET
           status = COALESCE(${record.status}, status),
-          actual_return_date = COALESCE(${record.actual_return_date}, actual_return_date),
+          actual_return_date = ${actualReturnDate},
           notes = COALESCE(${record.notes}, notes),
           verified_by = COALESCE(${record.verified_by}, verified_by),
           updated_at = CURRENT_TIMESTAMP
@@ -243,7 +374,23 @@ export const borrowService = {
       return this.getBorrowRecordById(id);
     } catch (error) {
       console.error('Error updating borrow record:', error);
-      throw error;
+      throw new Error('Failed to update borrow record');
+    }
+  },
+
+  async getBorrowRecordsByStatus(status: string): Promise<BorrowRecord[]> {
+    try {
+      const result = await sql`
+        SELECT br.*, i.name as item_name
+        FROM borrow_records br
+        LEFT JOIN items i ON br.item_id = i.id
+        WHERE br.status = ${status}
+        ORDER BY br.created_at DESC
+      `;
+      return result.rows.map(transformBorrowRow);
+    } catch (error) {
+      console.error('Error getting borrow records by status:', error);
+      throw new Error('Failed to fetch borrow records');
     }
   }
 };
@@ -265,7 +412,39 @@ export const dashboardService = {
       };
     } catch (error) {
       console.error('Error getting dashboard stats:', error);
-      throw error;
+      throw new Error('Failed to fetch dashboard stats');
+    }
+  },
+
+  async getRecentActivities(): Promise<any[]> {
+    try {
+      const borrowsResult = await sql`
+        SELECT br.*, i.name as item_name
+        FROM borrow_records br
+        LEFT JOIN items i ON br.item_id = i.id
+        ORDER BY br.created_at DESC
+        LIMIT 10
+      `;
+
+      return borrowsResult.rows.map(row => ({
+        id: row.id,
+        type: 'borrow',
+        title: `Peminjaman ${row.item_name}`,
+        description: `Dipinjam oleh ${row.borrower_name}`,
+        date: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
+        status: row.status
+      }));
+    } catch (error) {
+      console.error('Error getting recent activities:', error);
+      return [];
     }
   }
+};
+
+// Export untuk API routes
+export default {
+  itemService,
+  userService,
+  borrowService,
+  dashboardService
 };

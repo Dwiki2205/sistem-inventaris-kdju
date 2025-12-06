@@ -4,7 +4,7 @@ interface Toast {
   id: string;
   title: string;
   description?: string;
-  variant?: 'default' | 'success' | 'error' | 'warning';
+  variant?: 'default' | 'success' | 'error' | 'warning'| 'info';
 }
 
 interface ToastState {

@@ -1,3 +1,4 @@
+// types/index.ts
 export interface Item {
   id: string;
   name: string;
@@ -7,8 +8,8 @@ export interface Item {
   condition: 'baik' | 'rusak' | 'perlu_perbaikan';
   description: string;
   image_data?: string;
-  created_at: string;
-  updated_at: string;
+  created_at: Date | string;  // Perbaiki tipe ini
+  updated_at: Date | string;  // Perbaiki tipe ini
 }
 
 export interface BorrowRecord {
@@ -17,15 +18,15 @@ export interface BorrowRecord {
   item_name: string;
   borrower_name: string;
   quantity: number;
-  borrow_date: string;
-  return_date: string;
-  actual_return_date?: string;
+  borrow_date: Date | string;  // Perbaiki tipe ini
+  return_date: Date | string;  // Perbaiki tipe ini
+  actual_return_date?: Date | string;  // Perbaiki tipe ini
   notes?: string;
   status: 'dipinjam' | 'dikembalikan' | 'terlambat' | 'dibatalkan';
   created_by?: string;
   verified_by?: string;
-  created_at: string;
-  updated_at: string;
+  created_at: Date | string;  // Perbaiki tipe ini
+  updated_at: Date | string;  // Perbaiki tipe ini
 }
 
 export interface User {
@@ -33,8 +34,8 @@ export interface User {
   email: string;
   name: string;
   role: 'admin' | 'staff';
-  created_at: string;
-  updated_at: string;
+  created_at: Date | string;  // Perbaiki tipe ini
+  updated_at: Date | string;  // Perbaiki tipe ini
 }
 
 export interface DashboardStats {
@@ -43,3 +44,5 @@ export interface DashboardStats {
   damagedItems: number;
   totalUsers: number;
 }
+
+// Atau jika Anda ingin tetap menggunakan string, ubah transform function
