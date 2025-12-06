@@ -1,6 +1,45 @@
 import { sql } from '@vercel/postgres';
 import { Item, BorrowRecord, User, DashboardStats } from 'types';
 
+// Helper untuk mengkonversi Date ke string ISO untuk database
+const formatDateForDB = (date: Date | string | null | undefined): string | null => {
+  if (!date) return null;
+  
+  if (date instanceof Date) {
+    return date.toISOString();
+  }
+  
+  // Jika sudah string, pastikan formatnya benar
+  try {
+    // Coba parse untuk validasi
+    const parsed = new Date(date);
+    if (!isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+  } catch (error) {
+    // Jika gagal parse, kembalikan string asli
+    console.warn('Failed to parse date string:', date);
+  }
+  
+  return date;
+};
+
+// Helper untuk mengkonversi string ISO ke Date untuk aplikasi
+const formatDateForApp = (dateString: string | null): string => {
+  if (!dateString) return '';
+  
+  try {
+    const date = new Date(dateString);
+    if (!isNaN(date.getTime())) {
+      return date.toISOString();
+    }
+  } catch (error) {
+    console.warn('Failed to format date for app:', dateString);
+  }
+  
+  return dateString;
+};
+
 // Improved error handling
 const handleDatabaseError = (error: any, operation: string) => {
   console.error(`❌ Database Error ${operation}:`, {
@@ -39,7 +78,7 @@ export const testConnection = async () => {
   }
 };
 
-// Helper functions remain the same...
+// Helper functions dengan konversi tanggal yang benar
 const transformItemRow = (row: any): Item => ({
   id: row.id,
   name: row.name,
@@ -49,8 +88,8 @@ const transformItemRow = (row: any): Item => ({
   condition: row.condition,
   description: row.description,
   image_data: row.image_data,
-  created_at: row.created_at,
-  updated_at: row.updated_at
+  created_at: formatDateForApp(row.created_at),
+  updated_at: formatDateForApp(row.updated_at)
 });
 
 const transformBorrowRow = (row: any): BorrowRecord => ({
@@ -59,15 +98,15 @@ const transformBorrowRow = (row: any): BorrowRecord => ({
   item_name: row.item_name,
   borrower_name: row.borrower_name,
   quantity: row.quantity,
-  borrow_date: row.borrow_date,
-  return_date: row.return_date,
-  actual_return_date: row.actual_return_date,
+  borrow_date: formatDateForApp(row.borrow_date),
+  return_date: formatDateForApp(row.return_date),
+  actual_return_date: row.actual_return_date ? formatDateForApp(row.actual_return_date) : undefined,
   status: row.status,
   notes: row.notes,
   created_by: row.created_by,
   verified_by: row.verified_by,
-  created_at: row.created_at,
-  updated_at: row.updated_at
+  created_at: formatDateForApp(row.created_at),
+  updated_at: formatDateForApp(row.updated_at)
 });
 
 const transformUserRow = (row: any): User => ({
@@ -75,8 +114,8 @@ const transformUserRow = (row: any): User => ({
   email: row.email,
   name: row.name,
   role: row.role,
-  created_at: row.created_at,
-  updated_at: row.updated_at
+  created_at: formatDateForApp(row.created_at),
+  updated_at: formatDateForApp(row.updated_at)
 });
 
 // Image compression helper (client-side only)
@@ -272,7 +311,7 @@ export const itemService = {
   }
 };
 
-// Borrow Services
+// Borrow Services - PERBAIKAN UTAMA DI SINI
 export const borrowService = {
   async getAllBorrowRecords(): Promise<BorrowRecord[]> {
     try {
@@ -315,7 +354,8 @@ export const borrowService = {
     try {
       console.log('Creating new borrow record:', {
         item_id: record.item_id,
-        borrower_name: record.borrower_name
+        borrower_name: record.borrower_name,
+        quantity: record.quantity
       });
 
       // Get item name if not provided
@@ -340,6 +380,10 @@ export const borrowService = {
         throw new Error(`Stok tidak mencukupi. Stok tersedia: ${currentStock}`);
       }
 
+      // PERBAIKAN DI SINI: Konversi Date ke string untuk database
+      const borrowDate = formatDateForDB(record.borrow_date) || new Date().toISOString();
+      const returnDate = formatDateForDB(record.return_date) || new Date().toISOString();
+
       // Update item stock
       await sql`UPDATE items SET stock = stock - ${record.quantity} WHERE id = ${record.item_id}`;
 
@@ -360,8 +404,8 @@ export const borrowService = {
           ${itemName},
           ${record.borrower_name},
           ${record.quantity},
-          ${record.borrow_date},
-          ${record.return_date},
+          ${borrowDate},  // Sekarang sudah string
+          ${returnDate},  // Sekarang sudah string
           ${record.status},
           ${record.notes},
           ${record.created_by}
@@ -386,7 +430,8 @@ export const borrowService = {
     try {
       console.log(`Updating borrow record ${id}:`, {
         status: record.status,
-        return_date: record.return_date
+        return_date: record.return_date,
+        actual_return_date: record.actual_return_date
       });
 
       // If returning item, update stock
@@ -401,15 +446,20 @@ export const borrowService = {
         }
       }
 
+      // PERBAIKAN DI SINI: Konversi Date ke string untuk database
+      const borrowDate = record.borrow_date ? formatDateForDB(record.borrow_date) : null;
+      const returnDate = record.return_date ? formatDateForDB(record.return_date) : null;
+      const actualReturnDate = record.actual_return_date ? formatDateForDB(record.actual_return_date) : null;
+
       const result = await sql`
         UPDATE borrow_records
         SET
           item_id = COALESCE(${record.item_id}, item_id),
           borrower_name = COALESCE(${record.borrower_name}, borrower_name),
           quantity = COALESCE(${record.quantity}, quantity),
-          borrow_date = COALESCE(${record.borrow_date}, borrow_date),
-          return_date = COALESCE(${record.return_date}, return_date),
-          actual_return_date = COALESCE(${record.actual_return_date}, actual_return_date),
+          borrow_date = COALESCE(${borrowDate}, borrow_date),  // Menggunakan string yang sudah dikonversi
+          return_date = COALESCE(${returnDate}, return_date),  // Menggunakan string yang sudah dikonversi
+          actual_return_date = COALESCE(${actualReturnDate}, actual_return_date),  // Menggunakan string yang sudah dikonversi
           status = COALESCE(${record.status}, status),
           notes = COALESCE(${record.notes}, notes),
           verified_by = COALESCE(${record.verified_by}, verified_by),
@@ -471,6 +521,22 @@ export const borrowService = {
       return result.rows.map(transformBorrowRow);
     } catch (error) {
       return handleDatabaseError(error, `getting borrow records by item id: ${itemId}`);
+    }
+  },
+
+  async getBorrowRecordsByStatus(status: string): Promise<BorrowRecord[]> {
+    try {
+      console.log(`Fetching borrow records with status: ${status}`);
+      const result = await sql`
+        SELECT br.*, i.name as item_name
+        FROM borrow_records br
+        LEFT JOIN items i ON br.item_id = i.id
+        WHERE br.status = ${status}
+        ORDER BY br.created_at DESC
+      `;
+      return result.rows.map(transformBorrowRow);
+    } catch (error) {
+      return handleDatabaseError(error, `getting borrow records by status: ${status}`);
     }
   }
 };
@@ -652,5 +718,33 @@ export const dashboardService = {
     } catch (error) {
       return handleDatabaseError(error, 'getting recent borrow records');
     }
+  },
+
+  async getStatsByMonth(year: number = new Date().getFullYear()): Promise<any> {
+    try {
+      console.log(`Fetching stats for year: ${year}`);
+      const result = await sql`
+        SELECT 
+          EXTRACT(MONTH FROM created_at) as month,
+          COUNT(*) as total_borrows,
+          SUM(quantity) as total_items_borrowed
+        FROM borrow_records
+        WHERE EXTRACT(YEAR FROM created_at) = ${year}
+        GROUP BY EXTRACT(MONTH FROM created_at)
+        ORDER BY month
+      `;
+      return result.rows;
+    } catch (error) {
+      return handleDatabaseError(error, 'getting stats by month');
+    }
   }
+};
+
+// Export semua services
+export default {
+  itemService,
+  borrowService,
+  userService,
+  dashboardService,
+  testConnection
 };

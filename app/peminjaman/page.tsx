@@ -1,3 +1,4 @@
+// app/peminjaman/page.tsx
 'use client';
 
 import React, { useEffect, useState } from 'react';
@@ -131,10 +132,36 @@ const BorrowListPage: React.FC = () => {
     );
   };
 
-  const isOverdue = (returnDate: string) => {
+  // PERBAIKAN DI SINI: Ubah tipe parameter dan handle Date object
+  const isOverdue = (returnDate: string | Date): boolean => {
+    if (!returnDate) return false;
+    
     const today = new Date();
-    const returnDateObj = new Date(returnDate);
+    let returnDateObj: Date;
+    
+    if (returnDate instanceof Date) {
+      returnDateObj = returnDate;
+    } else {
+      returnDateObj = new Date(returnDate);
+    }
+    
+    // Set waktu ke akhir hari untuk perbandingan yang tepat
+    returnDateObj.setHours(23, 59, 59, 999);
+    
     return today > returnDateObj;
+  };
+
+  // Helper function untuk format date dengan aman
+  const formatDate = (date: string | Date): string => {
+    if (!date) return '-';
+    
+    try {
+      const dateObj = date instanceof Date ? date : new Date(date);
+      return dateObj.toLocaleDateString('id-ID');
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return '-';
+    }
   };
 
   if (loading && records.length === 0) {
@@ -212,7 +239,14 @@ const BorrowListPage: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-border">
               {records.map((record) => {
-                const isRecordOverdue = record.status === 'dipinjam' && isOverdue(record.return_date);
+                // PERBAIKAN DI SINI: Pastikan kita mengirim string ke isOverdue
+                const returnDateString = record.return_date 
+                  ? (record.return_date instanceof Date 
+                    ? record.return_date.toISOString() 
+                    : record.return_date)
+                  : '';
+                
+                const isRecordOverdue = record.status === 'dipinjam' && returnDateString && isOverdue(returnDateString);
                 
                 return (
                   <tr key={record.id} className={`hover:bg-muted/50 ${isRecordOverdue ? 'bg-red-50' : ''}`}>
@@ -230,11 +264,11 @@ const BorrowListPage: React.FC = () => {
                       {record.quantity}
                     </td>
                     <td className="px-6 py-4 text-sm text-foreground">
-                      {new Date(record.borrow_date).toLocaleDateString('id-ID')}
+                      {formatDate(record.borrow_date)}
                     </td>
                     <td className="px-6 py-4 text-sm text-foreground">
                       <div className={`${isRecordOverdue ? 'text-red-600 font-medium' : ''}`}>
-                        {new Date(record.return_date).toLocaleDateString('id-ID')}
+                        {formatDate(record.return_date)}
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -250,7 +284,7 @@ const BorrowListPage: React.FC = () => {
                       )}
                       {record.actual_return_date && (
                         <div className="text-xs text-green-600 mt-1">
-                          Dikembalikan: {new Date(record.actual_return_date).toLocaleDateString('id-ID')}
+                          Dikembalikan: {formatDate(record.actual_return_date)}
                         </div>
                       )}
                     </td>
